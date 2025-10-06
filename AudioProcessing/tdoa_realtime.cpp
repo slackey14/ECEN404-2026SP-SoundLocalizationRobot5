@@ -27,7 +27,7 @@ const float MIC_RADIUS = 0.045f;     // 45mm for UMA-8
 const int FFT_SIZE = 1024;
 const int HOP_SIZE = FFT_SIZE / 2;
 const float ENERGY_THRESHOLD = 0.001f; // Adjust based on sensitivity needs
-const double VOICE_FREQ_GAIN = 3.0; // Boosts voice frequencies by 3x
+const double VOICE_FREQ_GAIN = 10.0; // Boosts voice frequencies by 3x
 
 
 // --- Bandpass Filter Configuration for Human Voice ---
