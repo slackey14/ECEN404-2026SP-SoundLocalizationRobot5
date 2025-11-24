@@ -1,0 +1,285 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <Adafruit_NeoPixel.h>
+
+
+// =========================
+// Onboard WS2812 LED (GPIO 38)
+// =========================
+#define LED_GPIO 38
+#define NUM_LEDS 1
+
+
+Adafruit_NeoPixel led_strip(NUM_LEDS, LED_GPIO, NEO_GRB + NEO_KHZ800);
+
+
+// Convenient LED setter
+void setLED(uint8_t r, uint8_t g, uint8_t b) {
+  led_strip.setPixelColor(0, led_strip.Color(r, g, b));
+  led_strip.show();
+}
+
+
+// Flash color briefly for event feedback
+void flashLED(uint8_t r, uint8_t g, uint8_t b, int duration = 120) {
+  setLED(r, g, b);
+  delay(duration);
+  setLED(0, 0, 0);
+}
+
+
+// =========================
+// Initialize WS2812 LED driver
+// =========================
+bool initLED() {
+  led_strip.begin();
+  led_strip.clear();
+  led_strip.show();
+  return true;
+}
+
+
+// =========================
+// Motor Pin Definitions
+// =========================
+
+// Right Front Motor
+#define MF_PWMA 4
+#define MF_AI1 8
+#define MF_AI2 18
+
+// Left Front Motor
+#define MF_PWMB 5
+#define MF_BI1 21
+#define MF_BI2 9
+
+// Right Rear Motor
+#define MR_PWMA 13
+#define MR_AI1 12
+#define MR_AI2 11
+
+// Left Rear Motor
+#define MR_PWMB 14
+#define MR_BI1 16
+#define MR_BI2 10
+
+
+int rf_PWM = 250, lf_PWM = 250, rr_PWM = 250, lr_PWM = 250;
+
+
+// =========================
+// Mecanum Direction Bytes
+// =========================
+const byte MEC_STRAIGHT_FORWARD = B10101010;
+const byte MEC_STRAIGHT_BACKWARD = B01010101;
+const byte MEC_SIDEWAYS_RIGHT = B01101001;
+const byte MEC_SIDEWAYS_LEFT = B10010110;
+const byte MEC_ROTATE_CLOCKWISE = B01100110;
+const byte MEC_ROTATE_CCLOCKWISE = B10011001;
+const byte MEC_DIAGONAL_45 = B00101000;
+const byte MEC_DIAGONAL_135 = B10000010;
+const byte MEC_DIAGONAL_225 = B00010100;
+const byte MEC_DIAGONAL_315 = B01000001;
+
+// ======================= PWM Setup =========================
+const int mtrPWMFreq = 1000;
+const int mtrPWMResolution = 8;
+// PWM channels
+const int mtrRFpwmchannel = 4;
+const int mtrLFpwmchannel = 5;
+const int mtrRRpwmchannel = 13;
+const int mtrLRpwmchannel = 14;
+
+// =========================
+// Motor Functions
+// =========================
+void moveMotors(int speedRF, int speedLF, int speedRR, int speedLR, byte dircontrol) {
+ // Right Front
+ digitalWrite(MF_AI1, bitRead(dircontrol, 7));
+ digitalWrite(MF_AI2, bitRead(dircontrol, 6));
+ analogWrite(mtrRFpwmchannel, abs(speedRF));
+
+ // Left Front
+ digitalWrite(MF_BI1, bitRead(dircontrol, 5));
+ digitalWrite(MF_BI2, bitRead(dircontrol, 4));
+ analogWrite(mtrLFpwmchannel, abs(speedLF));
+
+ // Right Rear
+ digitalWrite(MR_AI1, bitRead(dircontrol, 3));
+ digitalWrite(MR_AI2, bitRead(dircontrol, 2));
+ analogWrite(mtrRRpwmchannel, abs(speedRR));
+
+ // Left Rear
+ digitalWrite(MR_BI1, bitRead(dircontrol, 1));
+ digitalWrite(MR_BI2, bitRead(dircontrol, 0));
+ analogWrite(mtrLRpwmchannel, abs(speedLR));
+
+  flashLED(150, 0, 200); // purple flash on command
+}
+
+
+void stopMotors() {
+  
+  ledcWrite(mtrRFpwmchannel, 0);
+  ledcWrite(mtrLFpwmchannel, 0);
+  ledcWrite(mtrRRpwmchannel, 0);
+  ledcWrite(mtrLRpwmchannel, 0);
+
+  digitalWrite(MF_AI1, LOW); digitalWrite(MF_AI2, LOW);
+  digitalWrite(MF_BI1, LOW); digitalWrite(MF_BI2, LOW);
+  digitalWrite(MR_AI1, LOW); digitalWrite(MR_AI2, LOW);
+  digitalWrite(MR_BI1, LOW); digitalWrite(MR_BI2, LOW);
+
+
+  flashLED(150, 0, 200);
+}
+
+
+// =========================
+// WiFi AP Mode
+// =========================
+WebServer server(80);
+
+
+// Web controller interface
+const char webpage[] PROGMEM = R"HTML(
+<!DOCTYPE html>
+<html>
+<head><title>Robot Controller</title></head>
+<body style="font-family:sans-serif;text-align:center;">
+<h2>Mecanum Robot Controller</h2>
+<button onclick='cmd("forward")'>Forward</button>
+<button onclick='cmd("back")'>Back</button><br><br>
+<button onclick='cmd("left")'>Left</button>
+<button onclick='cmd("right")'>Right</button><br><br>
+<button onclick='cmd("diag_45")'>Diag 45</button>
+<button onclick='cmd("diag_135")'>Diag 135</button><br><br>
+<button onclick='cmd("diag_225")'>Diag 225</button>
+<button onclick='cmd("diag_315")'>Diag 315</button><br><br>
+<button onclick='cmd("rotate_cw")'>Rotate CW</button>
+<button onclick='cmd("rotate_ccw")'>Rotate CCW</button><br><br>
+<button onclick='cmd("stop")'>STOP</button>
+
+
+<script>
+function cmd(c){
+ fetch("/cmd?c="+c);
+}
+</script>
+</body>
+</html>
+)HTML";
+
+
+void processCommand(String cmd) {
+  cmd.toLowerCase();
+
+
+  if   (cmd == "forward")   moveMotors(rf_PWM, lf_PWM, rr_PWM, lr_PWM, MEC_STRAIGHT_FORWARD);
+  else if (cmd == "back")     moveMotors(rf_PWM, lf_PWM, rr_PWM, lr_PWM, MEC_STRAIGHT_BACKWARD);
+  else if (cmd == "right")    moveMotors(rf_PWM, lf_PWM, rr_PWM, lr_PWM, MEC_SIDEWAYS_RIGHT);
+  else if (cmd == "left")     moveMotors(rf_PWM, lf_PWM, rr_PWM, lr_PWM, MEC_SIDEWAYS_LEFT);
+  else if (cmd == "rotate_cw")  moveMotors(rf_PWM, lf_PWM, rr_PWM, lr_PWM, MEC_ROTATE_CLOCKWISE);
+  else if (cmd == "rotate_ccw")  moveMotors(rf_PWM, lf_PWM, rr_PWM, lr_PWM, MEC_ROTATE_CCLOCKWISE);
+  else if (cmd == "diag_45")   moveMotors(rf_PWM, lf_PWM, rr_PWM, lr_PWM, MEC_DIAGONAL_45);
+  else if (cmd == "diag_135")   moveMotors(rf_PWM, lf_PWM, rr_PWM, lr_PWM, MEC_DIAGONAL_135);
+  else if (cmd == "diag_225")   moveMotors(rf_PWM, lf_PWM, rr_PWM, lr_PWM, MEC_DIAGONAL_225);
+  else if (cmd == "diag_315")   moveMotors(rf_PWM, lf_PWM, rr_PWM, lr_PWM, MEC_DIAGONAL_315);
+  else if (cmd == "stop")     stopMotors();
+}
+
+
+void setupAP() {
+  Serial.println("Starting WiFi AP...");
+
+  // LED: blinking blue (starting AP)
+  for (int i = 0; i < 6; i++) {
+    setLED(0, 0, 50);
+    delay(200);
+    setLED(0, 0, 0);
+    delay(200);
+  }
+
+
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP("Sound_Rover");
+  Serial.println(WiFi.softAPSSID()); // Prints actual SSID being broadcast
+  Serial.print("AP IP: ");
+  Serial.println(WiFi.softAPIP());
+
+
+  // LED: solid blue (AP active)
+  setLED(0, 0, 80);
+}
+
+
+// =========================
+// WebServer Handlers
+// =========================
+void handleRoot() {
+  server.send(200, "text/html", webpage);
+}
+
+
+void handleCmd() {
+  if (server.hasArg("c")) {
+    String command = server.arg("c");
+    processCommand(command);
+  }
+  server.send(200, "text/plain", "OK");
+}
+
+
+// =========================
+// Setup
+// =========================
+void setup() {
+  Serial.begin(115200);
+
+
+  initLED();
+
+  pinMode(MF_AI1, OUTPUT);
+  pinMode(MF_AI2, OUTPUT);
+  pinMode(MF_BI1, OUTPUT);
+  pinMode(MF_BI2, OUTPUT);
+
+  pinMode(MR_AI1, OUTPUT);
+  pinMode(MR_AI2, OUTPUT);
+  pinMode(MR_BI1, OUTPUT);
+  pinMode(MR_BI2, OUTPUT);
+
+  // Configure LEDC channels
+  ledcSetup(mtrRFpwmchannel, mtrPWMFreq, mtrPWMResolution);
+  ledcSetup(mtrLFpwmchannel, mtrPWMFreq, mtrPWMResolution);
+  ledcSetup(mtrRRpwmchannel, mtrPWMFreq, mtrPWMResolution);
+  ledcSetup(mtrLRpwmchannel, mtrPWMFreq, mtrPWMResolution);
+
+  // Attach PWM pins
+  ledcAttachPin(MF_PWMA, mtrRFpwmchannel);
+  ledcAttachPin(MF_PWMB, mtrLFpwmchannel);
+  ledcAttachPin(MR_PWMA, mtrRRpwmchannel);
+  ledcAttachPin(MR_PWMB, mtrLRpwmchannel);
+
+  stopMotors();
+
+  // Start AP
+  setupAP();
+
+
+  // Web server routes
+  server.on("/", handleRoot);
+  server.on("/cmd", handleCmd);
+  server.begin();
+}
+
+
+// =========================
+// Loop
+// =========================
+void loop() {
+  server.handleClient();
+}
+
+
