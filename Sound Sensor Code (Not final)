@@ -1,0 +1,95 @@
+#define trigpin1 4
+#define echopin1 5
+
+#define trigpin2 6
+#define echopin2 7
+
+#define trigpin3 8
+#define echopin3 9
+
+#define trigpin4 10
+#define echopin4 11
+
+const int outPin = 3;   // shared output pin
+const int D = 20;        // threshold distance in cm
+
+int UDIST1, UDIST2, UDIST3, UDIST4;
+
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(trigpin1, OUTPUT); pinMode(echopin1, INPUT);
+  pinMode(trigpin2, OUTPUT); pinMode(echopin2, INPUT);
+  pinMode(trigpin3, OUTPUT); pinMode(echopin3, INPUT);
+  pinMode(trigpin4, OUTPUT); pinMode(echopin4, INPUT);
+
+  pinMode(outPin, OUTPUT);
+  digitalWrite(outPin, LOW);
+}
+
+// --- Main loop ---
+void loop() {
+  // Take stable averaged readings
+  UDIST1 = getStableDistance(trigpin1, echopin1);
+  delay(30); // avoid cross-talk
+  UDIST2 = getStableDistance(trigpin2, echopin2);
+  delay(30);
+  UDIST3 = getStableDistance(trigpin3, echopin3);
+  delay(30);
+  UDIST4 = getStableDistance(trigpin4, echopin4);
+
+  // Ignore invalid very small values
+  if (UDIST1 < 2) UDIST1 = 999;
+  if (UDIST2 < 2) UDIST2 = 999;
+  if (UDIST3 < 2) UDIST3 = 999;
+  if (UDIST4 < 2) UDIST4 = 999;
+
+  // Serial command check
+  if (Serial.available()) {
+    char data = Serial.read();
+    if (data == 'd') {
+      Serial.print("Distance 1: "); Serial.print(UDIST1); Serial.println(" cm");
+      Serial.print("Distance 2: "); Serial.print(UDIST2); Serial.println(" cm");
+      Serial.print("Distance 3: "); Serial.print(UDIST3); Serial.println(" cm");
+      Serial.print("Distance 4: "); Serial.print(UDIST4); Serial.println(" cm");
+    }
+  }
+
+  // Debounced LED logic: require 3 consecutive hits before turning HIGH
+  static int count1 = 0, count2 = 0, count3 = 0, count4 = 0;
+
+  if (UDIST1 <= D) count1++; else count1 = 0;
+  if (UDIST2 <= D) count2++; else count2 = 0;
+  if (UDIST3 <= D) count3++; else count3 = 0;
+  if (UDIST4 <= D) count4++; else count4 = 0;
+
+  if (count1 >= 1 || count2 >= 1 || count3 >= 1 || count4 >= 1) {
+    digitalWrite(outPin, HIGH);
+  } else {
+    digitalWrite(outPin, LOW);
+  }
+}
+
+// --- Distance function with timeout ---
+int distanceFunc(int trigpin, int echopin) {
+  digitalWrite(trigpin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigpin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigpin, LOW);
+
+  long duration = pulseIn(echopin, HIGH, 30000); // timeout 30ms
+  if (duration == 0) return 999; // no echo detected
+  return (int)(duration * 0.0343 / 2); // cm
+}
+
+// --- Averaging helper ---
+int getStableDistance(int trigpin, int echopin) {
+  long sum = 0;
+  int samples = 3;
+  for (int i = 0; i < samples; i++) {
+    sum += distanceFunc(trigpin, echopin);
+    delay(5);
+  }
+  return sum / samples;
+}
