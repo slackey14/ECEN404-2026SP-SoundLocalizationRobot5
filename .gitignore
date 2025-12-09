@@ -1,0 +1,22 @@
+# Espressif IDF Standard Ignore
+/build/
+/managed_components/
+sdkconfig
+sdkconfig.old
+dependencies.lock
+
+# VS Code specific settings (Optional but recommended)
+.vscode/
+*.code-workspace
+
+# Python cache (if you use Python scripts)
+__pycache__/
+*.pyc
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+AudioProcessing/Webapp/include/
+AudioProcessing/ESP32/esp32-tdoa-firmware/build
+AudioProcessing/ESP32/esp32-tdoa-firmware/.devcontainer

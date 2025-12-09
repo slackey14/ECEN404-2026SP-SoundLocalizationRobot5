@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acoustic TDOA & FFT Stream Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #wsLog {
+            overflow-y: scroll;
+            max-height: 400px;
+            font-family: monospace;
+            font-size: 0.70rem;
+            line-height: 1rem;
+            word-break: break-all;
+        }
+        #pointer {
+            position: absolute;
+            bottom: 50%; 
+            left: 50%;
+            width: 0px;
+            height: 50%;
+            transform-origin: bottom center;
+            transform: translateX(-50%) rotate(0deg);
+            transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+            display: none;
+            z-index: 10;
+        }
+        .arrow-head {
+            position: absolute;
+            top: 0; 
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0; 
+            height: 0; 
+            border-left: 10px solid transparent;
+            border-right: 10px solid transparent;
+            border-bottom: 20px solid #be123c;
+            filter: drop-shadow(0 4px 3px rgb(0 0 0 / 0.07));
+        }
+        .arrow-shaft {
+            position: absolute;
+            top: 20px; 
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 4px;
+            background-color: #be123c;
+            border-bottom-left-radius: 9999px;
+            border-bottom-right-radius: 9999px;
+            opacity: 0.8;
+        }
+        .center-dot {
+            position: absolute;
+            bottom: 50%;
+            left: 50%;
+            width: 8px;
+            height: 8px;
+            background-color: #be123c;
+            border-radius: 50%;
+            transform: translate(-50%, 50%);
+            z-index: 20;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 sm:p-6 lg:p-8 font-sans">
+    <script>
+        tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter', 'sans-serif'], }, } } }
+    </script>
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 border-b-2 border-rose-700 pb-2">
+            Acoustic Direction Finding & Spectrum Analyzer
+        </h1>
+
+        <!-- Connection Control Panel -->
+        <div class="flex flex-col md:flex-row items-center justify-between mb-6 p-4 bg-white rounded-xl shadow-lg border border-gray-200 gap-4">
+            <div class="flex-grow w-full md:w-auto">
+                <label for="serverIp" class="block text-xs font-bold text-gray-500 uppercase mb-1">Server IP Address</label>
+                <input type="text" id="serverIp" class="w-full p-2 border border-gray-300 rounded-lg font-mono text-gray-700 focus:ring-2 focus:ring-rose-500 focus:border-transparent outline-none" placeholder="127.0.0.1">
+            </div>
+            
+            <div id="connectionStatus" 
+                 class="p-2 rounded-lg w-full md:w-auto flex-grow text-center bg-red-100 border border-red-400 text-red-800 font-medium text-sm transition duration-300">
+                Disconnected
+            </div>
+            
+            <button id="connectButton" 
+                    class="w-full md:w-auto px-6 py-3 bg-rose-700 text-white font-semibold rounded-lg shadow-xl hover:bg-rose-800 transition duration-150 ease-in-out disabled:opacity-50">
+                Connect
+            </button>
+        </div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <h2 class="text-xl font-semibold text-gray-700 mb-4 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-rose-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M18 12h-2M10 16h-2M14 8h-2"></path></svg>
+                    Frequency Spectrum
+                </h2>
+                <div class="relative h-96">
+                    <canvas id="fftChart"></canvas>
+                </div>
+                <div class="mt-4 text-sm text-gray-600">
+                    <p class="font-medium">FFT Info:</p>
+                    <p id="fftPeakInfo">Peak Frequency: N/A</p>
+                </div>
+            </div>
+
+            <div class="space-y-8">
+                <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                    <h2 class="text-xl font-semibold text-gray-700 mb-4 flex items-center">
+                        <svg class="w-5 h-5 mr-2 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        Direction of Arrival (DoA)
+                    </h2>
+                    <div id="doaDisplay" class="text-center">
+                        <p class="text-4xl font-bold text-gray-900" id="doaAngle">N/A</p>
+                        <p class="text-lg text-rose-600 font-semibold" id="doaLabel">Direction Unknown</p>
+                        
+                        <div class="relative w-full h-64 mt-4 overflow-hidden border-2 border-gray-100 rounded-full">
+                            <canvas id="doaChart"></canvas> 
+                            <div class="center-dot"></div>
+                            <div id="pointer">
+                                <div class="arrow-head"></div>
+                                <div class="arrow-shaft"></div>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">0° is North/Front (Smoothed 1s)</p>
+
+                        <div class="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100">
+                            <div class="bg-gray-50 p-2 rounded-lg">
+                                <p class="text-xs text-gray-500 uppercase tracking-wide">Est. Distance</p>
+                                <p class="text-2xl font-bold text-gray-800" id="distValue">--</p>
+                            </div>
+                            <div class="bg-gray-50 p-2 rounded-lg">
+                                <p class="text-xs text-gray-500 uppercase tracking-wide">RMS Energy</p>
+                                <p class="text-2xl font-bold text-gray-800" id="energyValue">--</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                    <h2 class="text-xl font-semibold text-gray-700 mb-3 flex items-center">
+                        <svg class="w-5 h-5 mr-2 text-stone-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-4l-3 3z"></path></svg>
+                        Log
+                    </h2>
+                    <div id="wsLog" class="bg-gray-800 text-green-400 p-2 rounded-lg border border-gray-700 h-48"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <script>
+        let ws;
+        const PORT = 9003;
+        const SAMPLE_RATE = 48000;
+        const FFT_SIZE = 1024; 
+        const SMOOTHING_BUFFER_SIZE = 25; 
+        
+        const statusEl = document.getElementById('connectionStatus');
+        const wsLogEl = document.getElementById('wsLog');
+        const doaAngleEl = document.getElementById('doaAngle');
+        const doaLabelEl = document.getElementById('doaLabel');
+        const distValueEl = document.getElementById('distValue');
+        const energyValueEl = document.getElementById('energyValue');
+        const fftPeakInfoEl = document.getElementById('fftPeakInfo');
+        const pointerEl = document.getElementById('pointer');
+        const connectButton = document.getElementById('connectButton');
+        const serverIpInput = document.getElementById('serverIp');
+
+        let fftChartInstance;
+        let angleHistory = [];
+
+        // --- 1. Robust Default IP Logic ---
+        // If hostname exists (served via HTTP), use it. Otherwise (file://), use 127.0.0.1
+        const defaultIp = window.location.hostname ? window.location.hostname : "127.0.0.1";
+        serverIpInput.value = defaultIp;
+
+        function binToHz(bin, fs, n) { return (bin * fs) / n; }
+
+        function logMessage(msg, type = 'info') {
+            const div = document.createElement('div');
+            const time = new Date().toLocaleTimeString();
+            div.textContent = `[${time}] ${msg}`;
+            div.className = type === 'error' ? 'text-red-400 mb-1 break-all' 
+                          : (type === 'rx' ? 'text-yellow-300 mb-1 break-all' 
+                          : 'text-green-400 mb-1 break-all');
+            wsLogEl.appendChild(div);
+            wsLogEl.scrollTop = wsLogEl.scrollHeight;
+        }
+        
+        function setStatus(cls, msg, dis = false) {
+             statusEl.className = `p-2 rounded-lg w-full md:w-auto flex-grow text-center font-medium text-sm transition duration-300 ${cls}`;
+             statusEl.textContent = `Status: ${msg}`;
+             connectButton.disabled = dis;
+        }
+
+        function getSmoothedAngle(newAngleDeg) {
+            const rad = newAngleDeg * (Math.PI / 180);
+            angleHistory.push({x: Math.cos(rad), y: Math.sin(rad)});
+            if (angleHistory.length > SMOOTHING_BUFFER_SIZE) angleHistory.shift();
+            let sumX = 0, sumY = 0;
+            for (let v of angleHistory) { sumX += v.x; sumY += v.y; }
+            let avgDeg = Math.atan2(sumY, sumX) * (180 / Math.PI);
+            if (avgDeg < 0) avgDeg += 360;
+            return avgDeg;
+        }
+
+        function initFFTChart() {
+            const ctx = document.getElementById('fftChart').getContext('2d');
+            fftChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({ length: FFT_SIZE / 2 + 1 }, (_, i) => binToHz(i, SAMPLE_RATE, FFT_SIZE).toFixed(0) + ' Hz'),
+                    datasets: [{
+                        label: 'Magnitude',
+                        data: Array(FFT_SIZE / 2 + 1).fill(0),
+                        borderColor: 'rgb(194, 65, 102)',
+                        backgroundColor: 'rgba(194, 65, 102, 0.2)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.1,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 0 },
+                    plugins: { legend: { display: false } },
+                    scales: { x: { ticks: { maxTicksLimit: 10, callback: (v, i) => (i === 0 || binToHz(i, SAMPLE_RATE, FFT_SIZE) % 1000 === 0) ? binToHz(i, SAMPLE_RATE, FFT_SIZE).toFixed(0) : null } } }
+                }
+            });
+        }
+
+        function updateFFTChart(fftData) {
+            if (!fftData || fftData.length === 0) return;
+            fftChartInstance.data.datasets[0].data = fftData;
+            fftChartInstance.update('none'); 
+        }
+
+        function updateDoA(angle, intensity) {
+            const rawAngle = parseFloat(angle);
+            if (isNaN(rawAngle)) return;
+
+            const smoothed = getSmoothedAngle(rawAngle);
+            doaAngleEl.textContent = smoothed.toFixed(1) + '°';
+            
+            pointerEl.style.display = 'block';
+            pointerEl.style.transform = `translateX(-50%) rotate(${smoothed}deg)`;
+
+            const clampInt = Math.min(1.0, Math.max(0.0, parseFloat(intensity) * 10)); 
+            
+            if (parseFloat(intensity) > 0.001) {
+                doaLabelEl.textContent = `Signal Detected`;
+                pointerEl.style.opacity = '1.0';
+                pointerEl.style.height = `${40 + (clampInt * 40)}%`;
+            } else {
+                doaLabelEl.textContent = `Idle (Last: ${smoothed.toFixed(1)}°)`;
+                pointerEl.style.opacity = '0.3';
+                pointerEl.style.height = '40%';
+            }
+        }
+
+        function connectWebSocket() {
+            if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+
+            const ip = serverIpInput.value.trim();
+            if (!ip) {
+                alert("Please enter a valid IP address.");
+                return;
+            }
+
+            const WS_URL = `ws://${ip}:${PORT}`;
+            logMessage(`Attempting to connect to ${WS_URL}...`);
+            setStatus('bg-yellow-100 text-yellow-800', 'CONNECTING...', true);
+            
+            ws = new WebSocket(WS_URL);
+            
+            ws.onopen = () => {
+                setStatus('bg-green-100 text-green-800', 'CONNECTED', true);
+                logMessage("Connected to WebSocket server.");
+            };
+            
+            ws.onmessage = (e) => {
+                try {
+                    const d = JSON.parse(e.data);
+                    const angle = d.doa;
+                    const energy = d.amplitude;
+                    const dist = d.distance; 
+
+                    if (d.freq_bins) updateFFTChart(d.freq_bins);
+                    if (angle !== undefined) updateDoA(angle, energy);
+                    
+                    if (dist !== undefined) {
+                        if (dist < 0) {
+                            distValueEl.textContent = "Too Quiet";
+                            distValueEl.classList.add("text-gray-400");
+                            distValueEl.classList.remove("text-gray-800");
+                        } else {
+                            distValueEl.textContent = dist.toFixed(2) + " m";
+                            distValueEl.classList.remove("text-gray-400");
+                            distValueEl.classList.add("text-gray-800");
+                        }
+                    }
+                    if (energy !== undefined) energyValueEl.textContent = energy.toFixed(4);
+
+                } catch (err) { 
+                    console.error(err); 
+                }
+            };
+            ws.onerror = (err) => {
+                setStatus('bg-red-100 text-red-800', 'ERROR', false);
+                logMessage("WebSocket Error. Check IP/Port and ensure Server is running.", 'error');
+            };
+            ws.onclose = (e) => {
+                setStatus('bg-red-100 text-red-800', `DISCONNECTED`, false);
+                logMessage(`Connection closed.`, 'error');
+            };
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initFFTChart();
+            connectButton.addEventListener('click', connectWebSocket);
+            pointerEl.style.display = 'block';
+            pointerEl.style.opacity = '0.3';
+        });
+    </script>
+</body>
+</html>

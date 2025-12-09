@@ -45,17 +45,17 @@ const float NOISE_THRESHOLD_MULTIPLIER = 5.0f; // Trigger when sound is 5x loude
 const int CALIBRATION_FRAMES = 40;            // Number of frames to measure for noise floor (~1 second).
 const int CAPTURE_FRAMES = 300;            
 
+// --- Angle Calculation Parameters ---
+const int ANGLE_SEARCH_STEP = 3;
+const int NUM_ANGLES = 360 / ANGLE_SEARCH_STEP;
+
 // --- Bandpass Filter & Gain ---
 const float MIN_FREQ = 300.0f;
 const float MAX_FREQ = 3400.0f;
 const float VOICE_FREQ_GAIN = 10.0f;
 
-// --- Angle Calculation Parameters ---
-const int ANGLE_SEARCH_STEP = 3;
-const int NUM_ANGLES = 360 / ANGLE_SEARCH_STEP;
-
 // --- DISTANCE ESTIMATION (NEEDS CALIBRATION!) ---
-const float REFERENCE_DISTANCE = 1.0f;
+const float REFERENCE_DISTANCE = 0.16f;
 const float REFERENCE_ENERGY = 0.05f;
 
 // --- Type definitions ---
