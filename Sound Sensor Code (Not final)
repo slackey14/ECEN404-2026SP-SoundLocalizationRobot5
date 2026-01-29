@@ -1,19 +1,25 @@
-#define trigpin1 4
-#define echopin1 5
+#include <Arduino.h>
 
-#define trigpin2 6
-#define echopin2 7
+#define trigpin1 4 //make 1
+#define echopin1 5 //make 2
 
-#define trigpin3 8
-#define echopin3 9
+#define trigpin2 6 //make 4
+#define echopin2 7 //make 5
 
-#define trigpin4 10
-#define echopin4 11
+#define trigpin3 8 //make 10
+#define echopin3 9 //make 11
+
+#define trigpin4 10 //make 21
+#define echopin4 11 //make 45
 
 const int outPin = 3;   // shared output pin
-const int D = 20;        // threshold distance in cm
+const int D = 15;        // threshold distance in cm
 
 int UDIST1, UDIST2, UDIST3, UDIST4;
+
+// Forward declarations so functions can be used before their definitions
+int distanceFunc(int trigpin, int echopin);
+int getStableDistance(int trigpin, int echopin);
 
 void setup() {
   Serial.begin(9600);
@@ -25,6 +31,11 @@ void setup() {
 
   pinMode(outPin, OUTPUT);
   digitalWrite(outPin, LOW);
+
+  
+
+
+
 }
 
 // --- Main loop ---
@@ -83,7 +94,7 @@ int distanceFunc(int trigpin, int echopin) {
   return (int)(duration * 0.0343 / 2); // cm
 }
 
-// --- Averaging helper ---
+
 int getStableDistance(int trigpin, int echopin) {
   long sum = 0;
   int samples = 3;
@@ -93,3 +104,4 @@ int getStableDistance(int trigpin, int echopin) {
   }
   return sum / samples;
 }
+
