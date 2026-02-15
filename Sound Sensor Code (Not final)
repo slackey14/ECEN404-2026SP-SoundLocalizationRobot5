@@ -9,8 +9,8 @@
 #define trigpin3 8 //make 10
 #define echopin3 9 //make 11
 
-#define trigpin4 10 //make 21
-#define echopin4 11 //make 45
+#define trigpin4 10 //make 36
+#define echopin4 11 //make 37
 
 const int outPin = 3;   // shared output pin
 const int D = 15;        // threshold distance in cm
