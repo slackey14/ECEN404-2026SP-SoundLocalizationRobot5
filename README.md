@@ -10,9 +10,9 @@
 * **Web Interface:** Built-in WiFi Access Point and HTTP server providing a live web UI with map visualization, manual controls, and live DSP configuration.
 
 ## Hardware Architecture
-* **Microcontroller:** ESP32-S3 WROOM
+* **Microcontroller:** ESP32-S3 WROOM 1
 * **Microphones:** 4x I2S Digital Microphones
-* **Sensors:** 4x Ultrasonic Distance Sensors
+* **Sensors:** 6x Ultrasonic Distance Sensors
 * **Chassis:** 4WD Mecanum Wheel chassis with independent motor drivers (PWM/Dir)
 
 ## Software Stack
